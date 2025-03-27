@@ -37,6 +37,8 @@ class SimulinkBlock(Block):
         
         self.addBlock(Output('Output',outputs))
 
+        self.app = dash.Dash(__name__)
+
     def addBlock(self,block:Block):
         if block.name in self.blocks:
             raise Exception(f'{block.name} is already in the monitor. Please rename or remove the block.')
@@ -46,9 +48,6 @@ class SimulinkBlock(Block):
         self.calibrationParameters | block.calibrationParameters
 
     def addConnection(self,name:str,data:str,start:Block,end:Block):
-        while name in self.connections:
-            print(f'{name} is already in the list of connection names! Adding _ to the end of name for uniqueness.')
-            name += '_'
         
         connection = Connection(name,data,start,end)
         
@@ -64,23 +63,24 @@ class SimulinkBlock(Block):
     
     def addEntryCondition(self,entryBlock:EntryCondition):
         self.entryCondition[entryBlock.name] = entryBlock
-        self.addConnection(name='entry',data=entryBlock.entrySignal,start=self.blocks['Input'],end=entryBlock)
+        self.addConnection(name=f'Input->{entryBlock.entrySignal}->Entry',data=entryBlock.entrySignal,start=self.blocks['Input'],end=entryBlock)
+        self._blocks.extend(entryBlock.node)
 
     def checkConnections(self,connections:list[Connection]):
+        
         def check(connection):
             bueno = True
             if connection.data not in connection.start.outputs.keys():
                 print(f'The block {connection.start.name} does not output {connection.data}! Please double check the connection {connection.name}')
                 bueno = False
 
-            
             if connection.data not in connection.end.inputs.keys():
                 print(f'The block {connection.end.name} does not take {connection.data} as input! Please double check the connection {connection.name}')
                 bueno = False
             
             return bueno
         
-        return [check(connection) for connection in connections]
+        return [check(connection) for connection in connections.values()]
 
     def checkInputsAndOutpus(self,block:Block):
         inputs = {i:False for i in block.inputs.keys()}
@@ -88,33 +88,49 @@ class SimulinkBlock(Block):
         bueno = True
         
         if block.name != 'Input':
-            if len(block.connections_in) != len(inputs):
-                print(f'{block.name} takes {len(inputs)} inputs! Please double check the incoming connections.')
-            
-            for connection in block.connections_in:
+            for connection in block.connections_in.values():
                 inputs[connection.data] = True
             
             for name, connected in inputs.items():
                 if not connected:
                     print(f'{block.name} is missing input connection for {name}!')
                     bueno = False
-                    
         
         if block.name != 'Output':        
-            if len(block.connections_out) != len(outputs):
-                print(f'{block.name} has {len(outputs)} outputs! Please double check the incoming connections.')        
-            
-            for connection in block.connections_out:
+            for connection in block.connections_out.values():
                 outputs[connection.data] = True        
 
             for name, connected in outputs.items():
                 if not connected:
                     print(f'{block.name} is missing output connection for {name}!')
                     bueno = False
-        
+
         return bueno
 
+    def createConnections(self,block:Block):
+        if block.name == 'Input' or block.visited:
+            return 
+        
+        block.visited = True
+        
+        for inputs in block.inputs.keys():
+            for b in self.blocks.values():
+                if b.name == block.name:
+                    continue
+
+                if inputs in b.outputs.keys() and f'{block.name}->{b.name}' not in self.connections and f'{b.name}->{block.name}' not in self.connections:
+                    self.addConnection(name=f'{b.name}->{inputs}->{block.name}',data=inputs,start=b,end=block)
+                    
+        for connection in block.connections_in.values():
+            self.createConnections(connection.start)
+        
+        return
+
     def compileBlock(self):
+        self.createConnections(self.blocks['Output'])
+        for block in self.blocks.values():
+            block.reset()
+
         todos_bien = []
         for name,block in self.blocks.items():
             if name == 'Input':
@@ -156,9 +172,10 @@ class SimulinkBlock(Block):
         self.outputs = outputBlock.outputs
     
     def backProp(self,block:Block):
-        #this can probably be more efficient
         if block.visited:
             return
+        
+        block.visited = True
         
         if block.name == 'Input':
             block.inputs = self.inputs
@@ -167,21 +184,14 @@ class SimulinkBlock(Block):
             block.visited = True
             return 
         
-        if sum(block.ready.values()) == len(block.ready):
-            block.computeOutput()
-            block.transferData()
-            block.visited = True
-            return 
-        
-        for connection in block.connections_in:
-            if block.ready[connection.data]:
+        for connection in block.connections_in.values():
+            if block.ready[connection.data] and connection.start.visited:
                 continue
             else:
                 self.backProp(connection.start)
 
         block.computeOutput()
         block.transferData()
-        block.visited = True
         
         return 
     
@@ -192,7 +202,7 @@ class SimulinkBlock(Block):
         for block in self.blocks.values():
             for key,value in kwargs.items():
                 if key in block.calibrationParameters:
-                    block.calibrationParameters[key] = value
+                    block.calibrationParameters[key] = value 
                     print(f'{key} calibrated to {value}')
         
     def visualizeModel(self):
@@ -202,12 +212,11 @@ class SimulinkBlock(Block):
         except:
             print(colored('You must compile the block first!','red'))
         
-        app = dash.Dash(__name__)
 
-        app.layout = html.Div([
+        self.app.layout = html.Div([
         cyto.Cytoscape(
             id='cytoscape',
-            layout={'name': 'preset'}, 
+            layout={'name': 'concentric'}, 
             style={'width': '100%', 'height': '1000px'},
             elements=self._blocks + self._connections,
             stylesheet=[
@@ -215,7 +224,7 @@ class SimulinkBlock(Block):
                     'selector': 'preset',
                     'style': {
                         'width': 50, 'height': 50, 'shape': 'rectangle',
-                        'background-color': 'white', 'label': 'data(label)',
+                        'background-color': '#c2c4c3', 'label': 'data(label)',
                         'text-valign': 'bottom', 'text-halign': 'center',
                         'color': 'white', 'border-width': 2, 'border-color': 'black'
                     }
@@ -229,9 +238,11 @@ class SimulinkBlock(Block):
                 },
                 {
                     'selector': '[parent]', 
-                    'style': {'width': 20, 'height': 20, 'background-color': 'black','text-valign': 'center', 'text-halign': 'center'}
+                    'style': {'width': 10, 'height': 10, 
+                              'background-color': 'black','text-valign': 'bottom', 
+                              'text-halign': 'center', 'color':'black'}
                 }
             ]
         )
     ])
-        app.run_server(debug=True)
+        self.app.run_server(debug=True)

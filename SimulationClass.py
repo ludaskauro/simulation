@@ -6,6 +6,10 @@ import pyarrow.parquet as pq
 import os
 import polars as pl
 from functools import lru_cache
+from tqdm import tqdm
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+import re
 
 def to_single_feature(param, shape=(-1,1)):
     param = np.array(param)
@@ -19,7 +23,7 @@ def vectorize(func):
         outputShape = [1]*len(parameters)
         for i,(name,param) in enumerate(parameters):
             param = to_single_feature(param.calibrationParameters[name])
-            
+
             newShape = [1]*len(parameters)
             newShape[i] = -1
 
@@ -27,12 +31,12 @@ def vectorize(func):
 
             self.simulinkBlock.blocks[name].calibrationParameters[name] = param
 
-            outputShape[i] = param.shape[0]
+            outputShape[i] = param.shape[i]
         
         self.outputShape = outputShape
 
         def reshape(value):
-            return np.full(outputShape,value)
+            return np.full(self.outputShape,value)
         
         for i,row in self.data.iterrows():
             row = row.map(reshape)
@@ -61,21 +65,23 @@ class Simulation:
 
         index = pd.MultiIndex.from_product(values,names=names)
         
-        out = {name:None for name in self.simulinkBlock.outputs.keys()}
+        chunk_size = 5_000
+
+        out = {name:pd.DataFrame(np.nan, index=np.arange(chunk_size), columns=index) for name in self.simulinkBlock.outputs.keys()}
 
         first_chunk = {name:True for name in self.simulinkBlock.outputs.keys()}
         writer = {name:None for name in self.simulinkBlock.outputs.keys()}
         
         for output in self.simulinkBlock.outputs.keys():
             os.makedirs(f'outputs/{self.simulinkBlock.name}/{output}', exist_ok=True)
+        
+        j = 0
 
-        for i,step in enumerate(gen):
-            for signal in step.keys():
-                data = step[signal].flatten().reshape(1,-1)
-                df_tmp = pd.DataFrame(data,columns=index)
-                out[signal] = pd.concat([out[signal], df_tmp],axis=0)
+        for i,step in tqdm(enumerate(gen)):
             
-                if i%500 == 0:
+            for signal in step.keys():
+                
+                if i%chunk_size == 0 and i != 0:
                     table = pa.Table.from_pandas(out[signal], preserve_index=False)
                     
                     if first_chunk[signal]:
@@ -83,10 +89,19 @@ class Simulation:
                         first_chunk[signal] = False
 
                     writer[signal].write_table(table)
-                    out[signal] = None
+                    
+                    out[signal] = out[signal].map(lambda x: np.nan)
+                    j = 0
+                
+                data = step[signal].flatten().reshape(1,-1)
+
+                out[signal].iloc[j] = data
+                
+            j += 1
         
-        for name,w in writer.items():
-            table = pa.Table.from_pandas(out[name], preserve_index=False)
+        for signal,w in writer.items():
+            out[signal] = out[signal].dropna()
+            table = pa.Table.from_pandas(out[signal], preserve_index=False)
             
             writer[signal].write_table(table)
             out[signal] = None
@@ -120,6 +135,92 @@ class Simulation:
         outputs = pl.DataFrame({key:pl.scan_parquet(folder_path+key+'/output.parquet').select([query]).collect() for key in self.simulinkBlock.outputs.keys()})
 
         return outputs
+    
+    def showQuery(self,**kwargs):
+        query = self.queryResults(**kwargs)
+        fig = make_subplots(rows=query.shape[1], cols=1, subplot_titles=query.columns)
+
+        for i, col in enumerate(query.columns):
+            fig.add_trace(go.Scatter(y=query[col],mode='lines'),row=i+1,col=1)
+        
+        fig.show()
+    
+    def showMax(self,signal):
+        folder_path = f'outputs/{self.simulinkBlock.name}/'
+
+        parameters = {key:self.simulinkBlock.calibrationParameters[key].outputs[key].flatten() for key in self.simulinkBlock.calibrationParameters.keys()}
+        
+        parameter_names = list(parameters.keys())
+        
+        df = pl.scan_parquet(folder_path+signal+'/output.parquet')
+
+        max_array = df.max().collect().transpose()
+        max_array.columns = ['max_'+signal]
+
+        columns = df.collect_schema().names()
+        colVal = []
+        for col in columns:
+            colVal.append(re.findall(r'[-+]?(?:\d*\.*\d+)', col))
+
+        tmp = pl.DataFrame(colVal).transpose().cast(pl.Float64)
+        
+        tmp.columns = parameter_names
+        tmp = tmp.with_columns(max_array)
+
+        fig = go.Figure(data=
+            go.Parcoords(
+                line = dict(color = tmp['max_'+signal],
+                        colorscale = 'viridis',
+                        showscale = True,
+                        ),
+                dimensions=[
+                    dict(label=param, values=tmp[param])
+                    for param in parameter_names
+                ]+[dict(label='max_'+signal, values=tmp['max_'+signal])]
+            )
+        )
+
+        fig.update_layout(font=dict(size=20))
+        fig.update_layout(height=800, title=f'Max values for {signal}')
+        fig.show()
+    
+    def showMin(self,signal):
+        folder_path = f'outputs/{self.simulinkBlock.name}/'
+
+        parameters = {key:self.simulinkBlock.calibrationParameters[key].outputs[key].flatten() for key in self.simulinkBlock.calibrationParameters.keys()}
+        
+        parameter_names = list(parameters.keys())
+        
+        df = pl.scan_parquet(folder_path+signal+'/output.parquet')
+
+        min_array = df.min().collect().transpose()
+        min_array.columns = [signal]
+
+        columns = df.collect_schema().names()
+        colVal = []
+        for col in columns:
+            colVal.append(re.findall(r'[-+]?(?:\d*\.*\d+)', col))
+
+        tmp = pl.DataFrame(colVal).transpose().cast(pl.Float64)
+        tmp.columns = parameter_names
+        tmp = tmp.with_columns(min_array)
+
+        fig = go.Figure(data=
+            go.Parcoords(
+                line = dict(color = tmp[signal],
+                        colorscale = 'viridis',
+                        showscale = True,
+                        ),
+                dimensions=[
+                    dict(label=param, values=tmp[param])
+                    for param in parameter_names
+                ]+[dict(label='min_'+signal, values=tmp['min_'+signal])]
+            )
+        )
+
+        fig.update_layout(paper_bgcolor="black")
+        fig.update_layout(height=800, title=f'Min values for {signal}')
+        fig.show()
     
     def setCalibration(self,**kwargs):
         self.simulinkBlock.setCalibration(**kwargs)

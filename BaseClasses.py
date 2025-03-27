@@ -25,8 +25,8 @@ class Block(ABC):
         self.inputs:dict = {i:0 for i in inputs}
         self.outputs:dict = {i:0 for i in outputs}
 
-        self.connections_in:list[Connection] = []
-        self.connections_out:list[Connection] = []
+        self.connections_in:dict = {}
+        self.connections_out:dict = {}
 
         self.ready:dict = {i:False for i in inputs}
         self.visited:bool = False
@@ -42,16 +42,25 @@ class Block(ABC):
         self.node:dict = {}
 
         self.entryCondition:dict = {}
+
+        self.x:int | None = 300
+        self.y:int | None = 300
+    
+    def buildNode(self,label,ports,layer):
+
+        self.node = [{'data':{'id':self.name,'label':label, "customSortOrder": layer}}]\
+              + [{'data': {'id': self.name + '_' + i,'label':l, 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}}  for i,l in ports.items()]        
     
     def addInput(self,connection:Connection):
         if len(self.connections_in) > len(self.inputs):
             raise Exception(f'More than the allowed number of inputs are connected to {self.name}')
         
-        self.connections_in.append(connection)
+        self.connections_in[connection.name] = connection
+        #self.connections.append(connection)
     
-    
-    def addOutput(self,connection:Connection):        
-        self.connections_out.append(connection)
+    def addOutput(self,connection:Connection):
+        self.connections_out[connection.name] = connection
+        #self.connections.append(connection)
     
     @abstractmethod
     def computeOutput(self):
@@ -75,16 +84,16 @@ class Block(ABC):
         else:
             print(f'{self.name} has calibration parameters')
 
-    def saveBlock(self,folder='inhouseBlocks/'):
+    def saveBlock(self,folder='SavedBlocks/'):
         os.makedirs(folder, exist_ok=True)
 
         with open(folder+self.name+'.pkl','wb') as f:
             pickle.dump(self,f)
     
     @staticmethod
-    def loadBlock(name,folder='inhouseBlocks/'):
+    def loadBlock(name,folder='SavedBlocks/'):
         os.makedirs(folder, exist_ok=True)
-        if name+'.pkl' not in os.listdir('inhouseBlocks/'):
+        if name+'.pkl' not in os.listdir('SavedBlocks/'):
             raise Exception(f'Simulink model {name} does not exist')
         
         with open(folder+name+'.pkl','rb') as f:
@@ -93,7 +102,7 @@ class Block(ABC):
         return model
 
     def transferData(self):
-        for connection in self.connections_out:
+        for connection in self.connections_out.values():
             connection.transferData()
 
     def reset(self):

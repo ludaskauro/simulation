@@ -9,7 +9,7 @@ class EntryCondition(Block):
 
         self.node = [
             {'data':{'id':self.name,'label':self.label}},
-            {'data': {'id': self.name + '_' + name, 'parent': self.name}},
+            {'data': {'id': self.name + '_' + name, 'parent': self.name, 'label':'In'}},
         ]
 
         self.entrySignal = entrySignal
@@ -19,14 +19,14 @@ class EntryCondition(Block):
 
 
 class SampleTime(Block):
-    def __init__(self, name: str, value, output='ts') -> None:
-        super().__init__(name, [], [output])
+    def __init__(self, name: str, value) -> None:
+        super().__init__(name, [], [name])
 
         self.label = 'ts'
 
         self.node = [
             {'data':{'id':self.name,'label':self.label}},
-            {'data': {'id': self.name + '_' + name, 'parent': self.name}},
+            {'data': {'id': self.name + '_' + name, 'parent': self.name, 'label':'Out'}},
         ]
 
         self.ready = {i:True for i in self.ready.keys()}
@@ -40,14 +40,14 @@ class SampleTime(Block):
         self.visited = False
 
 class Constant(Block):
-    def __init__(self, name: str, value, output='value') -> None:
-        super().__init__(name, [], [output])
+    def __init__(self, name: str, value) -> None:
+        super().__init__(name, [], [name])
 
         self.label = str(value)
 
         self.node = [
             {'data':{'id':self.name,'label':self.label}},
-            {'data': {'id': self.name + '_' + name, 'parent': self.name}},
+            {'data': {'id': self.name + '_' + name, 'parent': self.name,'label':'Out'}},
         ]
 
         self.ready = {i:True for i in self.ready.keys()}
@@ -66,7 +66,7 @@ class Parameter(Block):
         self.label = name
         self.node = [
             {'data':{'id':self.name,'label':self.label}},
-            {'data': {'id': self.name + '_' + name, 'parent': self.name}},
+            {'data': {'id': self.name + '_' + name, 'parent': self.name,'label':'Out'}},
         ]
 
         self.ready = {i:True for i in self.ready.keys()}
@@ -80,21 +80,24 @@ class Parameter(Block):
         self.visited = False
 
 class Delay(Block):
-    def __init__(self, name, signal) -> None:
-        super().__init__(name, [signal], [signal])
+    def __init__(self, name, signalIn, signalOut) -> None:
+        super().__init__(name, [signalIn], [signalOut])
 
         self.label = '1/z'
 
         self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal, 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal, 'parent': self.name}},]
+                    {'data': {'id': self.name + '_' + signalIn, 'parent': self.name,'label':'In'}},
+                    {'data': {'id': self.name + '_' + signalOut, 'parent': self.name,'label':'Out'}},]
 
-        self.memory = {i:0 for i in signal}
-        self.ready = {i:True for i in signal}
+        self.memory = {i:0 for i in [signalOut]}
+        self.ready = {i:True for i in [signalIn]}
+
+        self.signalOut = signalOut
+        self.signalIn = signalIn
 
     def computeOutput(self):
         self.outputs = self.memory
-        self.memory = self.inputs
+        self.memory[self.signalOut] = self.inputs[self.signalIn]
     
     def reset(self):
         self.visited = False
@@ -108,7 +111,7 @@ class Add(Block):
         self.node = [{'data':{'id':self.name,'label':self.label}},
                         {'data': {'id': self.name + '_' + pos1,'label':'+', 'parent': self.name}},
                         {'data': {'id': self.name + '_' + pos2,'label':'+', 'parent': self.name}},
-                        {'data': {'id': self.name + '_' + output, 'parent': self.name}},]
+                        {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}},]
     
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] + self.inputs[self.inputs_list[1]]
@@ -122,7 +125,7 @@ class Subtract(Block):
         self.node = [{'data':{'id':self.name,'label':self.label}},
                     {'data': {'id': self.name + '_' + pos,'label':'+', 'parent': self.name}},
                     {'data': {'id': self.name + '_' + neg,'label':'-', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
     
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] - self.inputs[self.inputs_list[1]]
@@ -134,9 +137,9 @@ class Min(Block):
         self.label = 'Min'
 
         self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal1,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal2,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + signal1,'label':'In', 'parent': self.name}},
+                    {'data': {'id': self.name + '_' + signal2,'label':'In', 'parent': self.name}},
+                    {'data': {'id': self.name + '_' + output,'label':'Out', 'parent': self.name}}]
     
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = np.minimum(self.inputs[self.inputs_list[0]], self.inputs[self.inputs_list[1]])
@@ -148,9 +151,9 @@ class Max(Block):
         self.label = 'Max'
 
         self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal1,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal2,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + signal1,'label':'In', 'parent': self.name, 'label':'In'}},
+                    {'data': {'id': self.name + '_' + signal2,'label':'In', 'parent': self.name, 'label':'In'}},
+                    {'data': {'id': self.name + '_' + output,'label':'Out', 'parent': self.name, 'label':'Out'}}]
     
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = np.maximum(self.inputs[self.inputs_list[0]], self.inputs[self.inputs_list[1]])
@@ -165,7 +168,7 @@ class Multiply(Block):
         self.node = [{'data':{'id':self.name,'label':self.label}},
                     {'data': {'id': self.name + '_' + factor1,'label':'x', 'parent': self.name}},
                     {'data': {'id': self.name + '_' + factor2,'label':'x', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
     
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] * self.inputs[self.inputs_list[1]]
@@ -178,7 +181,7 @@ class Divide(Block):
         self.node = [{'data':{'id':self.name,'label':self.label}},
                     {'data': {'id': self.name + '_' + numerator,'label':'x', 'parent': self.name}},
                     {'data': {'id': self.name + '_' + denominator,'label':'/', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
         
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] / (self.inputs[self.inputs_list[1]]+1e-5)
@@ -188,9 +191,9 @@ class And(Block):
         super().__init__(name, [signal1,signal2], [output])
         self.label = 'And'
         self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal1,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal2,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + signal1,'label':'In', 'parent': self.name}},
+                    {'data': {'id': self.name + '_' + signal2,'label':'In', 'parent': self.name}},
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
     
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] * self.inputs[self.inputs_list[1]]
@@ -202,8 +205,8 @@ class Not(Block):
         self.label = 'Not'
 
         self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + signal,'label':'In', 'parent': self.name}},
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
         
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = 1-self.inputs[self.inputs_list[0]]
@@ -215,9 +218,9 @@ class Or(Block):
         self.label = 'Or'
 
         self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal1,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal2,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + signal1,'label':'In', 'parent': self.name}},
+                    {'data': {'id': self.name + '_' + signal2,'label':'In', 'parent': self.name}},
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
         
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] + self.inputs[self.inputs_list[1]] - (self.inputs[self.inputs_list[0]] * self.inputs[self.inputs_list[1]])
@@ -232,7 +235,7 @@ class Switch(Block):
                     {'data': {'id': self.name + '_' + switched,'label':'Switched', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
                     {'data': {'id': self.name + '_' + default,'label':'Default', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
                     {'data': {'id': self.name + '_' + condition,'label':'Condition', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
         
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[1]]*(1-self.inputs[self.inputs_list[2]]) + self.inputs[self.inputs_list[0]]*self.inputs[self.inputs_list[2]]
@@ -244,8 +247,8 @@ class Abs(Block):
         self.label = '|u|'
 
         self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal,'label':'', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + signal,'label':'In', 'parent': self.name}},
+                    {'data': {'id': self.name + '_' + signal, 'parent': self.name, 'label':'Out'}}]
     
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = np.abs(self.inputs[self.inputs_list[0]])
@@ -273,7 +276,7 @@ class GreaterThan(Block):
         self.node = [{'data':{'id':self.name,'label':self.label}},
                     {'data': {'id': self.name + '_' + first,'label':'First', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
                     {'data': {'id': self.name + '_' + second,'label':'Second', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
         
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] > self.inputs[self.inputs_list[1]]
@@ -287,7 +290,7 @@ class LessThanOrEqual(Block):
         self.node = [{'data':{'id':self.name,'label':self.label}},
                     {'data': {'id': self.name + '_' + first,'label':'First', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
                     {'data': {'id': self.name + '_' + second,'label':'Second', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
         
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] <= self.inputs[self.inputs_list[1]]
@@ -301,7 +304,7 @@ class LessThan(Block):
         self.node = [{'data':{'id':self.name,'label':self.label}},
                     {'data': {'id': self.name + '_' + first,'label':'First', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
                     {'data': {'id': self.name + '_' + second,'label':'Second', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
+                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
         
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] < self.inputs[self.inputs_list[1]]
@@ -310,7 +313,7 @@ class Input(Block):
     def __init__(self, name, outputs) -> None:
         super().__init__(name,outputs,outputs)
         
-        self.node = [{'data':{'id':self.name,'label':name}},] + [{'data': {'id': self.name + '_' + out, 'parent': self.name}} for out in outputs]
+        self.node = [{'data':{'id':self.name,'label':name}},] + [{'data': {'id': self.name + '_' + out, 'parent': self.name, 'label':'Out'}} for out in outputs]
     
     def computeOutput(self):
         self.outputs = self.inputs
@@ -319,8 +322,8 @@ class Output(Block):
     def __init__(self, name, inputs) -> None:
         super().__init__(name,inputs,inputs)
         
-        self.node = [{'data':{'id':self.name,'label':name}},
-                        {'data': {'id':self.name + '_' + inputs[0], 'parent': self.name}}]
+        self.node = [{'data':{'id':self.name,'label':name}}] + [{'data': {'id': self.name + '_' + out, 'parent': self.name, 'label':'Out'}} for out in inputs]
+                    
     
     def computeOutput(self):
         self.outputs = self.inputs
