@@ -1,18 +1,14 @@
 from BaseClasses import Block
-from scipy.interpolate import RegularGridInterpolator 
+from scipy.interpolate import RegularGridInterpolator
 import numpy as np
 import plotly.graph_objects as go
+from decorators import entry
 
 class EntryCondition(Block):
     def __init__(self, name: str, entrySignal) -> None:
-        super().__init__(name, [entrySignal], [])
+        super().__init__(name, [entrySignal], [])        
 
         self.label = 'EntryCond'
-
-        self.node = [
-            {'data':{'id':self.name,'label':self.label}},
-            {'data': {'id': self.name + '_' + name, 'parent': self.name, 'label':'In'}},
-        ]
 
         self.entrySignal = entrySignal
     
@@ -21,22 +17,16 @@ class EntryCondition(Block):
 
 
 class SampleTime(Block):
-    def __init__(self, name: str, value) -> None:
+    def __init__(self, name: str) -> None:
         super().__init__(name, [], [name])
 
         self.label = 'ts'
 
-        self.node = [
-            {'data':{'id':self.name,'label':self.label}},
-            {'data': {'id': self.name + '_' + name, 'parent': self.name, 'label':'Out'}},
-        ]
-
         self.ready = {i:True for i in self.ready.keys()}
-
-        self.value = value
     
+    @entry
     def computeOutput(self):
-        self.outputs[self.outputs_list[0]] = self.value
+        self.outputs[self.outputs_list[0]] = self.raster
     
     def reset(self):
         self.visited = False
@@ -47,15 +37,11 @@ class Constant(Block):
 
         self.label = str(value)
 
-        self.node = [
-            {'data':{'id':self.name,'label':self.label}},
-            {'data': {'id': self.name + '_' + name, 'parent': self.name,'label':'Out'}},
-        ]
-
         self.ready = {i:True for i in self.ready.keys()}
 
         self.value = value
     
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.value
     
@@ -65,16 +51,15 @@ class Constant(Block):
 class Parameter(Block):
     def __init__(self, name, value=None) -> None:
         super().__init__(name, [], [name])
+        
         self.label = name
-        self.node = [
-            {'data':{'id':self.name,'label':self.label}},
-            {'data': {'id': self.name + '_' + name, 'parent': self.name,'label':'Out'}},
-        ]
 
         self.ready = {i:True for i in self.ready.keys()}
 
-        self.calibrationParameters[name] = value
+        self.value = value
 
+        self.calibrationParameters[name] = value
+    @entry
     def computeOutput(self):
         self.outputs[self.name] = self.calibrationParameters[self.name]
     
@@ -87,16 +72,13 @@ class Delay(Block):
 
         self.label = '1/z'
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signalIn, 'parent': self.name,'label':'In'}},
-                    {'data': {'id': self.name + '_' + signalOut, 'parent': self.name,'label':'Out'}},]
-
         self.memory = {i:0 for i in [signalOut]}
         self.ready = {i:True for i in [signalIn]}
 
         self.signalOut = signalOut
         self.signalIn = signalIn
 
+    @entry
     def computeOutput(self):
         self.outputs = self.memory
         self.memory[self.signalOut] = self.inputs[self.signalIn]
@@ -109,12 +91,10 @@ class Add(Block):
         super().__init__(name,[pos1,pos2],[output])
         
         self.label = 'Add'
-        
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                        {'data': {'id': self.name + '_' + pos1,'label':'+', 'parent': self.name}},
-                        {'data': {'id': self.name + '_' + pos2,'label':'+', 'parent': self.name}},
-                        {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}},]
+
+        self.inputPorts = {pos1:'+',pos2:'+'}
     
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] + self.inputs[self.inputs_list[1]]
 
@@ -124,11 +104,9 @@ class Subtract(Block):
         
         self.label = 'Subtract'
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + pos,'label':'+', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + neg,'label':'-', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
+        self.inputPorts = {pos:'+',neg:'-'}
     
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] - self.inputs[self.inputs_list[1]]
 
@@ -137,12 +115,8 @@ class Min(Block):
         super().__init__(name,[signal1,signal2],[output])
         
         self.label = 'Min'
-
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal1,'label':'In', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal2,'label':'In', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output,'label':'Out', 'parent': self.name}}]
     
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = np.minimum(self.inputs[self.inputs_list[0]], self.inputs[self.inputs_list[1]])
 
@@ -151,12 +125,8 @@ class Max(Block):
         super().__init__(name,[signal1,signal2],[output])
         
         self.label = 'Max'
-
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal1,'label':'In', 'parent': self.name, 'label':'In'}},
-                    {'data': {'id': self.name + '_' + signal2,'label':'In', 'parent': self.name, 'label':'In'}},
-                    {'data': {'id': self.name + '_' + output,'label':'Out', 'parent': self.name, 'label':'Out'}}]
     
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = np.maximum(self.inputs[self.inputs_list[0]], self.inputs[self.inputs_list[1]])
     
@@ -167,36 +137,28 @@ class Multiply(Block):
         
         self.label = 'Multiply'
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + factor1,'label':'x', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + factor2,'label':'x', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
-    
+        self.inputPorts = {factor1:'x',factor2:'x'}
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] * self.inputs[self.inputs_list[1]]
 
 class Divide(Block):
     def __init__(self, name, numerator, denominator, output) -> None:
         super().__init__(name, [numerator,denominator], [output])
+        
         self.label = 'Divide'
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + numerator,'label':'x', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + denominator,'label':'/', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
-        
+        self.inputPorts = {numerator:'x',denominator:'/'}
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] / (self.inputs[self.inputs_list[1]]+1e-5)
 
 class And(Block):
     def __init__(self, name, signal1, signal2, output) -> None:
         super().__init__(name, [signal1,signal2], [output])
+
         self.label = 'And'
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal1,'label':'In', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal2,'label':'In', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
-    
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] * self.inputs[self.inputs_list[1]]
 
@@ -205,11 +167,7 @@ class Not(Block):
         super().__init__(name, [signal], [output])
 
         self.label = 'Not'
-
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal,'label':'In', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
-        
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = 1-self.inputs[self.inputs_list[0]]
 
@@ -218,12 +176,7 @@ class Or(Block):
         super().__init__(name, [signal1,signal2], [output])
 
         self.label = 'Or'
-
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal1,'label':'In', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal2,'label':'In', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
-        
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] + self.inputs[self.inputs_list[1]] - (self.inputs[self.inputs_list[0]] * self.inputs[self.inputs_list[1]])
 
@@ -233,25 +186,17 @@ class Switch(Block):
 
         self.label = 'Switch'
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + switched,'label':'Switched', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + default,'label':'Default', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + condition,'label':'Condition', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
-        
+        self.inputPorts = {switched:'Switched', default:'Default', condition:'Condition'}
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[1]]*(1-self.inputs[self.inputs_list[2]]) + self.inputs[self.inputs_list[0]]*self.inputs[self.inputs_list[2]]
 
 class Abs(Block):
-    def __init__(self, name, signal) -> None:
-        super().__init__(name, [signal], [signal])
+    def __init__(self, name, signal, output) -> None:
+        super().__init__(name, [signal], [output])
 
         self.label = '|u|'
-
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + signal,'label':'In', 'parent': self.name}},
-                    {'data': {'id': self.name + '_' + signal, 'parent': self.name, 'label':'Out'}}]
-    
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = np.abs(self.inputs[self.inputs_list[0]])
 
@@ -261,11 +206,8 @@ class GreaterThanOrEqual(Block):
 
         self.label = '>='
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + first,'label':'First', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + second,'label':'Second', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name}}]
-        
+        self.inputPorts = {first:'First', second:'Second'}
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] >= self.inputs[self.inputs_list[1]]
 
@@ -274,12 +216,9 @@ class GreaterThan(Block):
         super().__init__(name, [first,second], [output])
 
         self.label = '>'
-
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + first,'label':'First', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + second,'label':'Second', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
         
+        self.inputPorts = {first:'First', second:'Second'}
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] > self.inputs[self.inputs_list[1]]
 
@@ -289,11 +228,8 @@ class LessThanOrEqual(Block):
 
         self.label = '<='
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + first,'label':'First', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + second,'label':'Second', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
-        
+        self.inputPorts = {first:'First', second:'Second'}
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] <= self.inputs[self.inputs_list[1]]
 
@@ -303,20 +239,52 @@ class LessThan(Block):
 
         self.label = '<'
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + first,'label':'First', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + second,'label':'Second', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'Out'}}]
-        
+        self.inputPorts = {first:'First', second:'Second'}
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] < self.inputs[self.inputs_list[1]]
+
+class EqualTo(Block):
+    def __init__(self, name, first, second, output):
+        super().__init__(name, [first,second], [output])
+        self.label = '=='        
+    @entry
+    def computeOutput(self):
+        self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] == self.inputs[self.inputs_list[1]]
+
+class SampleDelay(Block):
+    def __init__(self, name, signal, delay, output):
+        super().__init__(name, [signal, delay], [output])
+
+        self.label = 'Sample Delay'
+
+        self.inputPorts = {signal:'In',delay:'td'}
+        
+        self.memory = []
+    @entry
+    def computeOutput(self):
+        if len(self.memory) == self.inputs[self.inputs_list[1]]:
+            self.outputs[self.outputs_list[0]] = self.memory.pop(0)
+        
+        self.memory.append(self.inputs[self.inputs_list[0]])
+
+class FlankUp(Block):
+    def __init__(self, name, inputs, outputs):
+        super().__init__(name, inputs, outputs)
+        
+        self.label = 'Flank Up'
+
+        self.memory = []
+    @entry
+    def computeOutput(self):
+        if len(self.memory) < 2:
+            pass
 
 class Input(Block):
     def __init__(self, name, outputs) -> None:
         super().__init__(name,outputs,outputs)
-        
-        self.node = [{'data':{'id':self.name,'label':name}},] + [{'data': {'id': self.name + '_' + out, 'parent': self.name, 'label':'Out'}} for out in outputs]
-    
+        self.label = 'Input'
+    @entry
     def computeOutput(self):
         self.outputs = self.inputs
 
@@ -324,8 +292,8 @@ class Output(Block):
     def __init__(self, name, inputs) -> None:
         super().__init__(name,inputs,inputs)
         
-        self.node = [{'data':{'id':self.name,'label':name}}] + [{'data': {'id': self.name + '_' + out, 'parent': self.name, 'label':'Out'}} for out in inputs]
-                    
+        self.label = 'Output'
+    @entry
     def computeOutput(self):
         self.outputs = self.inputs
 
@@ -335,10 +303,9 @@ class Map2D(Block):
         
         self.label = '2D Map ' + name.split('_')[-1]
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + x,'label':'x', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + y,'label':'y', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'z'}}]
+        self.inputPorts = {x:'x',y:'y'}
+
+        self.outputPorts = {output:'z'}
     
         with open(DCMPath,'r') as file:
             map_started = False
@@ -368,7 +335,7 @@ class Map2D(Block):
         self.yPoint = y
 
         self.grid = RegularGridInterpolator(points=(x,y),values=z,bounds_error=False)
-
+    @entry
     def computeOutput(self):        
         self.inputs = {signal:np.clip(value,min(coord),max(coord)) for coord, (signal, value) in zip([self.yPoint,self.xPoint], self.inputs.items())}
         self.outputs[self.outputs_list[0]] = self.grid((self.inputs[self.inputs_list[1]],self.inputs[self.inputs_list[0]]))
@@ -407,9 +374,8 @@ class Map1D(Block):
         
         self.label = '1D Map ' + name.split('_')[-1]
 
-        self.node = [{'data':{'id':self.name,'label':self.label}},
-                    {'data': {'id': self.name + '_' + x,'label':'x', 'parent': self.name},'style':{'text-valign': 'bottom', 'text-halign': 'center'}},
-                    {'data': {'id': self.name + '_' + output, 'parent': self.name, 'label':'y'}}]
+        self.inputPorts = {x:'x'}
+        self.outputPorts = {output:'y'}
     
         with open(DCMPath,'r') as file:
             map_started = False
@@ -435,7 +401,7 @@ class Map1D(Block):
         self.xPoint = x
 
         self.grid = RegularGridInterpolator(points=(x,),values=y,bounds_error=False)
-
+    @entry
     def computeOutput(self):  
         #not super pretty      
         self.inputs = {signal:np.clip(value,min(self.xPoint),max(self.xPoint)) for signal, value in self.inputs.items()}

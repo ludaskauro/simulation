@@ -1,35 +1,21 @@
 import dash
 import dash_cytoscape as cyto
 from dash import html
-from BaseClasses import Block, Connection
+from BaseClasses import Block,Connection
 from BaseBlocks import Input, Output, EntryCondition
 from termcolor import colored
+import numpy as np
+import pickle
+import os
+from scipy.optimize import minimize, Bounds
+from decorators import entry
 
-def entry(func):
-    """
-    This wrapper checks if the user has added an entry condition. 
-    If we don't have entry then the previous output will be returned.
-    I have to double check how delayed values are updated when we don't have entry.
-    In this implementation they will be updated regardless of entry
-    """
-    def wrapper(self):
-        if self.entryCondition:
-            prevOutput = self.outputs
-            #here comes one of the worst lines of code i have ever written
-            entrySignal = list(list(self.entryCondition.values())[0].inputs.values())[0] 
-
-            func(self)
-
-            self.outputs = {key:value*entrySignal+prevOutput[key]*(1-entrySignal) for key, value in self.outputs.items()}
-        else:
-            func(self)
-        
-        return None
-    return wrapper
 
 class SimulinkBlock(Block):
-    def __init__(self, name, inputs, outputs) -> None:
+    def __init__(self, name, raster, inputs, outputs) -> None:
         super().__init__(name,inputs,outputs)
+
+        self.raster = raster
 
         self.compiled = False
 
@@ -44,8 +30,9 @@ class SimulinkBlock(Block):
             raise Exception(f'{block.name} is already in the monitor. Please rename or remove the block.')
             
         self.blocks[block.name] = block
-        self._blocks.extend(block.node)
         self.calibrationParameters | block.calibrationParameters
+
+        block.raster = self.raster
 
     def addConnection(self,name:str,data:str,start:Block,end:Block):
         
@@ -63,11 +50,45 @@ class SimulinkBlock(Block):
     
     def addEntryCondition(self,entryBlock:EntryCondition):
         self.entryCondition[entryBlock.name] = entryBlock
+
         self.addConnection(name=f'Input->{entryBlock.entrySignal}->Entry',data=entryBlock.entrySignal,start=self.blocks['Input'],end=entryBlock)
         self._blocks.extend(entryBlock.node)
+        self.addBlock(entryBlock)
+    
+    def saveBlock(self,folder:str='SavedBlocks/')->None:
+        """
+        Saves a block
 
-    def checkConnections(self,connections:list[Connection]):
+        Args:
+            folder (str): Path to folder where to save the block. Defaults to 'SavedBlocks/'.
+        """
+        os.makedirs(folder, exist_ok=True)
+
+        with open(folder+self.name+'.pkl','wb') as f:
+            pickle.dump(self,f)
+    
+    @staticmethod
+    def loadBlock(name:str,folder:str='SavedBlocks/'):
+        """
+        Loads a saved block.
+
+        Args:
+            name (str): Name of the saved block
+            folder (str): Path to the folder where the block is saved. Defaults to 'SavedBlocks/'.
+
+        Returns:
+            block (SimulinkBlock): The saved block.
+        """
+        os.makedirs(folder, exist_ok=True)
+        if name+'.pkl' not in os.listdir('SavedBlocks/'):
+            raise Exception(f'Simulink block {name} does not exist')
         
+        with open(folder+name+'.pkl','rb') as f:
+            block = pickle.load(f)
+
+        return block
+
+    def checkConnections(self,connections:list[Connection]):        
         def check(connection):
             bueno = True
             if connection.data not in connection.start.outputs.keys():
@@ -106,27 +127,103 @@ class SimulinkBlock(Block):
                     bueno = False
 
         return bueno
+    
+    def positionNodes(self):
+        
+        k = 0.01
+        r = 15
 
+        blocks = [b for b in self.blocks.values() if b.name not in ['Input', 'Output']]
+        all_blocks = list(self.blocks.values())
+        x0 = [b.x for b in blocks]
+        y0 = [b.y for b in blocks]
+
+        coords0 = x0+y0
+        n_blocks = len(blocks)
+
+        lb = [200]*len(x0) + [-300]*len(y0)
+        ub = [1000]*len(x0) + [300]*len(y0)
+
+        constrain = Bounds(lb=lb,ub=ub)
+
+        def getHookeForce(block:Block)->float:
+            x = block.x
+            y = block.y
+
+            in_x = np.array([connection.start.x for connection in block.connections_in.values()])
+            in_y = np.array([connection.start.y for connection in block.connections_in.values()])
+
+            out_x = np.array([connection.start.x for connection in block.connections_out.values()])
+            out_y = np.array([connection.start.y for connection in block.connections_out.values()])
+
+            force = -k*np.sum(np.sqrt((in_x-x)**2 + (in_y-y)**2)) - k*np.sum(np.sqrt((out_x-x)**2 + (out_y-y)**2))
+
+            return force
+        
+        def getRepulseForce(block1:Block, block2:Block)->float:
+            x1 = block1.x
+            x2 = block2.x
+
+            y1 = block1.y
+            y2 = block2.y
+
+            force = r*np.sqrt((x1-x2)**2 + (y1-y2)**2)/(len(blocks)-1)
+
+            return force
+        
+        def objectiveFunction(coords):
+            x = coords[:n_blocks]
+            y = coords[n_blocks:]
+            for xi,yi,bi in zip(x,y,blocks):
+                bi.x = xi
+                bi.y = yi
+            
+            hookes = np.array([getHookeForce(block) for block in blocks])
+            repulse = np.array([np.sum([getRepulseForce(block,block2) for block2 in all_blocks if block.name != block2.name]) for block in blocks])
+
+            loss = -repulse - hookes
+
+            return np.sum(loss)
+        
+        res = minimize(objectiveFunction,coords0, method='trust-constr', options={'maxiter': 50},bounds=constrain)
+        x = res.x[:n_blocks]
+        y = res.x[n_blocks:]
+        for block, xi, yi in zip(blocks,x,y):
+            block.x = xi
+            block.y = yi
+        
     def createConnections(self,block:Block):
-        if block.name == 'Input' or block.visited:
+        if block.name == 'Input':
             return 
+        
+        if block.visited:
+            return
         
         block.visited = True
         
-        for inputs in block.inputs.keys():
+        for i,inputs in enumerate(block.inputs.keys()):
             for b in self.blocks.values():
-                if b.name == block.name:
+                if b.name == block.name or b.name == 'Output':
                     continue
 
-                if inputs in b.outputs.keys() and f'{block.name}->{b.name}' not in self.connections and f'{b.name}->{block.name}' not in self.connections:
-                    self.addConnection(name=f'{b.name}->{inputs}->{block.name}',data=inputs,start=b,end=block)
+                connection_name = f'{b.name}->{inputs}->{block.name}'
+                connection_name_inv = f'{block.name}->{inputs}->{b.name}'
+
+                if inputs in b.outputs.keys() and connection_name_inv not in self.connections and connection_name not in self.connections:
+                    self.addConnection(name=connection_name,data=inputs,start=b,end=block)
                     
         for connection in block.connections_in.values():
             self.createConnections(connection.start)
         
         return
 
-    def compileBlock(self):
+    def compileBlock(self,printResult=True):
+        self.blocks['Output'].x = 1200
+        self.blocks['Output'].y = 0
+
+        self.blocks['Input'].x = 100
+        self.blocks['Input'].y = 0
+
         self.createConnections(self.blocks['Output'])
         for block in self.blocks.values():
             block.reset()
@@ -148,8 +245,17 @@ class SimulinkBlock(Block):
         todos_bien.extend(block_bueno)
 
         if all(todos_bien):
-            print(colored(f'{self.name} compiled successfully!','green'))
+            self.positionNodes()
+
+            for block in self.blocks.values():
+                block.buildNode()
+                self._blocks += block.node
+                if self.entryCondition and block.name not in ['Input','Output']:
+                    block.entryCondition = self.entryCondition
+            
             self.compiled = True
+            if printResult:
+                print(colored(f'{self.name} compiled successfully!','green'))
 
         else:
             self.compiled = False
@@ -216,12 +322,12 @@ class SimulinkBlock(Block):
         self.app.layout = html.Div([
         cyto.Cytoscape(
             id='cytoscape',
-            layout={'name': 'concentric'}, 
+            layout={'name': 'preset'}, 
             style={'width': '100%', 'height': '1000px'},
             elements=self._blocks + self._connections,
             stylesheet=[
                 {
-                    'selector': 'preset',
+                    'selector': 'node',
                     'style': {
                         'width': 50, 'height': 50, 'shape': 'rectangle',
                         'background-color': '#c2c4c3', 'label': 'data(label)',
@@ -246,3 +352,33 @@ class SimulinkBlock(Block):
         )
     ])
         self.app.run_server(debug=True)
+        
+    def __getitem__(self,name:str)->Block:
+        return self.blocks[name]
+
+    def getSummary(self):
+        info = ''
+
+        for block in self.blocks.values():
+            info += f'Block name: {block.name} \n'
+            info += f'  Type: {type(block).__name__} \n'
+            
+            info += f'  Connections: \n'
+            connections = block.connections_in | block.connections_out
+            if connections:
+                for connection in connections.keys():
+                    info += f'      {connection} \n'
+            else:
+                info += '       None \n'
+                
+            if block.calibrationParameters:
+                info += f'  Calibration parameters: \n'
+                for name, param in block.calibrationParameters.items():
+                    if param is not None:
+                        info += f'      {name} is calibrated to {param} \n'
+                    else:
+                        info += f'      {name} is not calibrated \n'
+            
+            info += '\n----------------------------------------------\n'
+
+        print(info)
