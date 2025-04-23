@@ -30,7 +30,7 @@ class SimulinkBlock(Block):
             raise Exception(f'{block.name} is already in the monitor. Please rename or remove the block.')
             
         self.blocks[block.name] = block
-        self.calibrationParameters | block.calibrationParameters
+        self.calibrationParameters = self.calibrationParameters | block.calibrationParameters
 
         block.raster = self.raster
 
@@ -305,12 +305,36 @@ class SimulinkBlock(Block):
         self.inputs = inputs
     
     def setCalibration(self,**kwargs):
-        for block in self.blocks.values():
-            for key,value in kwargs.items():
-                if key in block.calibrationParameters:
-                    block.calibrationParameters[key] = value 
-                    print(f'{key} calibrated to {value}')
-        
+        #for block in self.blocks.values():
+        #    if isinstance(block,SimulinkBlock):
+        #        block.setCalibration(**kwargs)
+        #        continue
+        #    
+        #    for key,value in kwargs.items():
+        #        if key in block.calibrationParameters:
+        #            block.calibrationParameters[key] = value 
+        #            print(f'{key} calibrated to {value}')
+
+        for key,value in kwargs.items():
+            if key in self.calibrationParameters:
+                self.calibrationParameters[key].value = value 
+                print(f'{key} calibrated to {value}')
+    
+    def getCalibrationInfo(self)->None:
+        """
+        Prints information of the set calibration
+        """
+        if self.calibrationParameters:
+            print(f'Calibration parameters for {self.name}:')
+            for name, param in self.calibrationParameters.items():
+                #for p,v in param.calibrationParameters.items():
+                if param.value is None:
+                    print(f'    {name} is not calibrated')
+                else:
+                    print(f'    {name} is calibrated to {np.array(param.value).squeeze()}')
+        else:
+            print(f'{self.name} has calibration parameters')
+
     def visualizeModel(self):
         try:
             if not self.compiled:

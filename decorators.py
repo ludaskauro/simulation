@@ -38,14 +38,14 @@ def vectorize(func):
         parameters = self.simulinkBlock.calibrationParameters.items()
         outputShape = [1]*len(parameters)
         for i,(name,param) in enumerate(parameters):
-            param = to_single_feature(param.calibrationParameters[name])
+            param = to_single_feature(param.value)
 
             newShape = [1]*len(parameters)
             newShape[i] = -1
 
             param = param.reshape(newShape)
 
-            self.simulinkBlock.blocks[name].calibrationParameters[name] = param
+            self.simulinkBlock.calibrationParameters[name].value = param
 
             outputShape[i] = param.shape[i]
         

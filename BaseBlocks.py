@@ -61,7 +61,7 @@ class Parameter(Block):
         self.calibrationParameters[name] = value
     @entry
     def computeOutput(self):
-        self.outputs[self.name] = self.calibrationParameters[self.name]
+        self.outputs[self.name] = self.value
     
     def reset(self):
         self.visited = False
@@ -148,10 +148,10 @@ class Divide(Block):
         
         self.label = 'Divide'
 
-        self.inputPorts = {numerator:'x',denominator:'/'}
+        self.inputPorts = {numerator:'x', denominator:'/'}
     @entry
     def computeOutput(self):
-        self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] / (self.inputs[self.inputs_list[1]]+1e-5)
+        self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] / (self.inputs[self.inputs_list[1]]+0.01)
 
 class And(Block):
     def __init__(self, name, signal1, signal2, output) -> None:

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import numpy as np
 
 class Connection:
     def __init__(self,name:str,data:str,start,end) -> None:
@@ -111,22 +112,6 @@ class Block(ABC):
     
     def addCalibrationParameter(self)->None:
         raise NotImplementedError('You need to overwrite this method in your class if you want to use them')
-
-    def getCalibrationInfo(self)->None:
-        """
-        Prints information of the set calibration
-        """
-        if self.calibrationParameters:
-            print(f'Calibration parameters for {self.name}:')
-            for name, param in self.calibrationParameters.items():
-                for p,v in param.calibrationParameters.items():
-                    if v is None:
-                        print(f'    {p} is not calibrated')
-                    else:
-                      print(f'    {p} is calibrated to {v.squeeze()}')
-        else:
-            print(f'{self.name} has calibration parameters')
-
 
     def transferData(self)->None:
         """

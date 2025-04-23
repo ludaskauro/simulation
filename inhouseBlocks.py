@@ -92,7 +92,7 @@ class _TimeAverageSubsystem(SimulinkBlock):
         self.addBlock(Constant(name='Constant1',value=1))
 
         self.addBlock(Switch(name='switchI',switched=I,default='addI',condition='reset',output='switchI'))
-        self.addBlock(Switch(name='switchC',switched=I,default='addC',condition='reset',output='switchC'))
+        self.addBlock(Switch(name='switchC',switched='Constant1',default='addC',condition='reset',output='switchC'))
 
         self.addBlock(Add(name='addI',pos1=I,pos2='delayedI',output='addI'))
         self.addBlock(Add(name='addC',pos1='Constant1',pos2='delayedC',output='addC'))
@@ -135,11 +135,11 @@ class TimeAverage(SimulinkBlock):
         self.outputPorts = {Cmplt:'Cmplt', OH:'OH', O:'O'}
 
         self.addBlock(Or(name='or',signal1=T,signal2=r,output='entry1'))
-        self.addBlock(And(name='and',signal1=T,signal2='Cmplt',output=Cmplt))
+        self.addBlock(And(name='and',signal1=T,signal2='Cmplt1',output=Cmplt))
 
         self.addBlock(SampleTime(name='ts'))
 
-        self.addBlock(_TimeAverageSubsystem(name='subsystem',raster=raster,entry='entry1',I=I,r=r,Ts='ts',Time=Time,Cmplt='Cmplt',O=O))
+        self.addBlock(_TimeAverageSubsystem(name='subsystem',raster=raster,entry='entry1',I=I,r=r,Ts='ts',Time=Time,Cmplt='Cmplt1',O=O))
 
         self.addBlock(_TimeAverageRename(name='rename',raster=raster,entry=Cmplt,O=O,OH=OH))
 

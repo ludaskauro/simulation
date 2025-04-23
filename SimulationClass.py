@@ -11,7 +11,7 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import re
 from decorators import vectorize
-import threading
+from termcolor import colored
 
 class Simulation:
     def __init__(self,block:SimulinkBlock,data:pd.DataFrame,alreadySimulated:bool=False) -> None:
@@ -25,24 +25,21 @@ class Simulation:
         self.simulinkBlock.setInput(data)
         self.simulinkBlock.computeOutput()
     
-    def writeToParquet(self,data,writer,first_chunk,signal):
-            table = pa.Table.from_pandas(data, preserve_index=False)
-                    
-            if first_chunk:
-                writer = pq.ParquetWriter(f'outputs/{self.simulinkBlock.name}/{signal}/output.parquet', table.schema, compression='SNAPPY')
-                first_chunk = False
-
-            writer.write_table(table)
-            
-            data = data.map(lambda x: np.nan)
-    
     def runSimulation(self):        
+        if not self.simulinkBlock.compiled:
+            print(colored('You must compile the block first!','red'))
+        
         gen = self.simGenerator()
         
         names = list(self.simulinkBlock.calibrationParameters.keys())
-        values = [param.calibrationParameters[name] for name, param in self.simulinkBlock.calibrationParameters.items()]
+        values = [param.value for name, param in self.simulinkBlock.calibrationParameters.items()]
         
-        index = pd.MultiIndex.from_product(values,names=names)
+        if len(names) > 1:
+            index = pd.MultiIndex.from_product(values,names=names)
+        elif len(names) < 2 and values:
+            index = pd.Index(values[0],name=names[0])
+        elif not values:
+            index = pd.Index([1])
         
         chunk_size = 5_000
 
@@ -60,8 +57,10 @@ class Simulation:
         for i,step in tqdm(enumerate(gen)):
             
             for signal in step.keys():
-
-                data = step[signal].flatten().reshape(1,-1)
+                try:
+                    data = step[signal].flatten().reshape(1,-1)
+                except:
+                    data = step[signal]
 
                 out[signal].iloc[j] = data
                 
@@ -110,14 +109,19 @@ class Simulation:
 
     @lru_cache(10)
     def queryResults(self,**kwargs):
-        parameters = self.simulinkBlock.calibrationParameters.keys()
-        sorted_kwargs = {param:kwargs[param] for param in parameters}
+        if kwargs:
+            parameters = self.simulinkBlock.calibrationParameters.keys()
+            sorted_kwargs = {param:kwargs[param] for param in parameters}
 
-        query = self.buildQuery(list(sorted_kwargs.values()))
+            query = self.buildQuery(list(sorted_kwargs.values()))
+            
+            folder_path = f'outputs/{self.simulinkBlock.name}/'
+            
+            outputs = pl.DataFrame({key:pl.scan_parquet(folder_path+key+'/output.parquet').select([query]).collect() for key in self.simulinkBlock.outputs.keys()})
         
-        folder_path = f'outputs/{self.simulinkBlock.name}/'
-        
-        outputs = pl.DataFrame({key:pl.scan_parquet(folder_path+key+'/output.parquet').select([query]).collect() for key in self.simulinkBlock.outputs.keys()})
+        else:
+            folder_path = f'outputs/{self.simulinkBlock.name}/'
+            outputs = pl.DataFrame({key:pl.scan_parquet(folder_path+key+'/output.parquet').collect() for key in self.simulinkBlock.outputs.keys()})
 
         return outputs
     
