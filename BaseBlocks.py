@@ -3,6 +3,7 @@ from scipy.interpolate import RegularGridInterpolator
 import numpy as np
 import plotly.graph_objects as go
 from decorators import entry
+from functools import reduce
 
 class EntryCondition(Block):
     def __init__(self, name: str, entrySignal) -> None:
@@ -269,16 +270,34 @@ class SampleDelay(Block):
         self.memory.append(self.inputs[self.inputs_list[0]])
 
 class FlankUp(Block):
-    def __init__(self, name, inputs, outputs):
-        super().__init__(name, inputs, outputs)
+    def __init__(self, name, input, output):
+        super().__init__(name, [input], [output])
         
         self.label = 'Flank Up'
 
-        self.memory = []
+        self.memory = {'prevSignal':0, 'prevOutput':0}
+    
     @entry
     def computeOutput(self):
-        if len(self.memory) < 2:
-            pass
+        self.outputs[self.outputs_list[0]] = (1-self.memory['prevSignal'])*(1-self.memory['prevOutput'])*self.inputs[self.inputs_list[0]]
+        
+        self.memory['prevOutput'] = self.outputs[self.outputs_list[0]]
+        self.memory['prevSignal'] = self.inputs[self.inputs_list[0]]
+
+class FlankDown(Block):
+    def __init__(self, name, input, output):
+        super().__init__(name, [input], [output])
+        
+        self.label = 'Flank Down'
+
+        self.memory = {'prevSignal':0, 'prevOutput':0}
+    
+    @entry
+    def computeOutput(self):
+        self.outputs[self.outputs_list[0]] = self.memory['prevSignal']*(1-self.memory['prevOutput'])*(1-self.inputs[self.inputs_list[0]])
+        
+        self.memory['prevOutput'] = self.outputs[self.outputs_list[0]]
+        self.memory['prevSignal'] = self.inputs[self.inputs_list[0]]
 
 class Input(Block):
     def __init__(self, name, outputs) -> None:
@@ -420,3 +439,37 @@ class Map1D(Block):
             showlegend=False
         )    
         fig.show()
+
+class BitWiseAnd(Block):
+    def __init__(self, name, bit0, bit1, bit2, bit3, bit4, bit5, bit6, bit7, output):
+        super().__init__(name, [bit0, bit1, bit2, bit3, bit4, bit5, bit6, bit7], [output])
+        
+        self.label = 'Bitwise And'
+
+        self.inputPorts = { bit0:'bit0', bit1:'bit1', bit2:'bit2', bit3:'bit3', bit4:'bit4', bit5:'bit5', bit6:'bit6', bit7:'bit7'}
+
+    @entry
+    def computeOutput(self):
+        self.outputs[self.outputs_list[0]] = reduce(lambda x,y: x*y, self.inputs.values())
+
+class Clip(Block):
+    def __init__(self, name, input, max, min, output):
+        super().__init__(name, [input, max, min], [output])
+
+        self.label = 'clamp'
+
+    def computeOutput(self):
+        signal = self.inputs[self.inputs_list[0]]
+        maxVal = self.inputs[self.inputs_list[1]]
+        minVal = self.inputs[self.inputs_list[2]]
+
+        self.outputs[self.outputs_list[0]] = np.clip(a=signal, a_max=maxVal, a_min=minVal)
+
+class NotEqual(Block):
+    def __init__(self, name, signal1, signal2, output):
+        super().__init__(name, [signal1, signal2], [output])
+        
+        self.label = '!='
+
+    def computeOutput(self):
+        self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] != self.inputs[self.inputs_list[1]]

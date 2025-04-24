@@ -45,8 +45,11 @@ class SimulinkBlock(Block):
         end.addInput(connection)
     
     def addCalibrationParameter(self,parameter:Block):
+        
         self.addBlock(parameter)
-        self.calibrationParameters[parameter.name] = parameter
+
+        if parameter.name not in self.calibrationParameters:
+            self.calibrationParameters[parameter.name] = parameter
     
     def addEntryCondition(self,entryBlock:EntryCondition):
         self.entryCondition[entryBlock.name] = entryBlock
@@ -268,6 +271,7 @@ class SimulinkBlock(Block):
                 raise Exception()
         except:
             print(colored('You must compile the block first!','red'))
+            
         
         outputBlock = self.blocks['Output']
         self.backProp(outputBlock)
@@ -305,16 +309,6 @@ class SimulinkBlock(Block):
         self.inputs = inputs
     
     def setCalibration(self,**kwargs):
-        #for block in self.blocks.values():
-        #    if isinstance(block,SimulinkBlock):
-        #        block.setCalibration(**kwargs)
-        #        continue
-        #    
-        #    for key,value in kwargs.items():
-        #        if key in block.calibrationParameters:
-        #            block.calibrationParameters[key] = value 
-        #            print(f'{key} calibrated to {value}')
-
         for key,value in kwargs.items():
             if key in self.calibrationParameters:
                 self.calibrationParameters[key].value = value 

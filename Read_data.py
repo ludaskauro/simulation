@@ -25,6 +25,7 @@ def ReadINCAFile(directory:str,channel_list:list[str]):
         # Read MDF data file
         try:
             data = mdfreader.Mdf(os.path.join(directory, file_name),channel_list=channel_list)
+            data.resample()
             data.convert_to_pandas()
             
             # Get group

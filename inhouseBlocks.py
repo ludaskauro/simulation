@@ -21,12 +21,12 @@ class AccumCtr(SimulinkBlock):
 
         self.addBlock(Min(name='min2',signal1='sub1',signal2=DevMax,output='min2'))
 
-        self.addBlock(Add(name='add1',pos1='delayedCtr',pos2='min2',output='add1'))        
+        self.addBlock(Add(name='add1',pos1='delayedCtr',pos2='max2',output='add1'))        
 
-        self.addBlock(Constant(name='Constant3',value=0)) #this needs to be updated! -------------------------------------------------------
-        self.addBlock(Max(name='max2',signal1='add1',signal2='Constant3',output='max2'))
+        self.addBlock(Constant(name='Constant3',value=0))
+        self.addBlock(Max(name='max2',signal1='min2',signal2='Constant3',output='max2'))
 
-        self.addBlock(Min(name='min3',signal1='max2',signal2='div1',output='min3'))
+        self.addBlock(Min(name='min3',signal1='add1',signal2='div1',output='min3'))
 
         self.addBlock(Constant(name='Constant4',value=0))
         self.addBlock(Switch(name='switchCtr',switched='Constant4',default='min3',condition=r,output='ctr1'))
@@ -199,5 +199,59 @@ class DiscreteLowPassFilter(SimulinkBlock):
         self.addBlock(Add(name='add1',pos1='delay',pos2='mul1',output=output))
 
         self.addBlock(Delay(name='delay',signalIn=output,signalOut='delay'))
+
+        self.compileBlock(printResult=False)
+
+class Increment(SimulinkBlock):
+    def __init__(self, name, raster, rv, r, inc, e, max, output):
+        super().__init__(name, raster, [rv, r, inc,e, max], [output])
+
+        self.label = 'Increment'
+
+        self.inputPorts = {rv:'rv', r:'r', inc:'inc', max:'max', e:'e'}
+
+        self.addBlock(Constant(name='Constant1',value=0))
+        
+        self.addBlock(Switch(name='switch1',default='Constant1',switched=inc,condition=e,output='increment'))
+        self.addBlock(Add(name='add1',pos1='increment',pos2='delayedVal',output='add1'))
+        
+        self.addBlock(Switch(name='switch2',switched=rv,default='add1',condition=r,output='switch2'))
+        self.addBlock(Delay(name='delay',signalIn='switch2',signalOut='delayedVal'))
+
+        self.addBlock(SampleTime(name='ts'))
+        self.addBlock(Multiply(name='mul1',factor1='switch2',factor2='ts',output='outputPrel'))
+
+        self.addBlock(Constant(name='None',value=None))
+
+        self.addBlock(Clip(name='clip',input='outputPrel',max=max,min='None',output=output))
+
+        self.compileBlock(printResult=False)
+
+class NbrAverage(SimulinkBlock):
+    def __init__(self, name, raster, rv, r, I, e, DerivAvg, Nbr):
+        super().__init__(name, raster, [rv, r, I, e], [DerivAvg, Nbr])
+        self.label = 'Nbr Average'
+
+        self.inputPorts = {rv:'rv', r:'r', I:'I', e:'e'}
+        self.outputPorts = {DerivAvg:'DerivAvg', Nbr:'Nbr'}
+
+        self.addBlock(Constant(name='Constant1',value=1))
+        self.addBlock(Constant(name='Constant0',value=0))
+
+        self.addBlock(Switch(name='switchI',default='Constant0',switched=I,condition=e,output='switchI'))
+        self.addBlock(Switch(name='switchEntry',switched='Constant1',default='Constant0',condition=e,output='switchEntry'))
+
+        self.addBlock(Add(name='addI',pos1='switchI',pos2='delayedI',output='addI'))
+        self.addBlock(Add(name='addEntry',pos1='switchEntry',pos2='delayedEntry',output='addEntry'))
+
+        self.addBlock(Switch(name='SwitchResetI',switched=rv,default='addI',condition=r,output='finalI'))
+        self.addBlock(Switch(name='SwitchResetEntry',switched='Constant0',default='addEntry',condition=r,output=Nbr))
+
+        self.addBlock(Delay(name='delayedI',signalIn='finalI',signalOut='delayedI'))
+        self.addBlock(Delay(name='delayedEntry',signalIn=Nbr,signalOut='delayedEntry'))
+
+        self.addBlock(Max(name='maxEntry',signal1='Constant1',signal2=Nbr,output='denominator'))
+
+        self.addBlock(Divide(name='mul',numerator='finalI',denominator='denominator',output=DerivAvg))
 
         self.compileBlock(printResult=False)
