@@ -59,7 +59,8 @@ class Parameter(Block):
 
         self.value = value
 
-        self.calibrationParameters[name] = value
+        self.calibrationParameters[name] = self
+    
     @entry
     def computeOutput(self):
         self.outputs[self.name] = self.value
@@ -73,16 +74,21 @@ class Delay(Block):
 
         self.label = '1/z'
 
-        self.memory = {i:0 for i in [signalOut]}
-        self.ready = {i:True for i in [signalIn]}
+        self.memory = {signalOut:0}
+        self.ready = {signalIn:True}
 
         self.signalOut = signalOut
         self.signalIn = signalIn
 
+        self.in_cycle = False
+
     @entry
     def computeOutput(self):
-        self.outputs = self.memory
-        self.memory[self.signalOut] = self.inputs[self.signalIn]
+        if not self.in_cycle:
+            self.outputs[self.signalOut] = self.memory[self.signalOut]
+            self.memory[self.signalOut] = self.inputs[self.signalIn]
+        elif self.in_cycle:
+            self.outputs[self.signalOut] = self.inputs[self.signalIn]
     
     def reset(self):
         self.visited = False
@@ -97,7 +103,7 @@ class Add(Block):
     
     @entry
     def computeOutput(self):
-        self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] + self.inputs[self.inputs_list[1]]
+        self.outputs[self.outputs_list[0]] = reduce(lambda x,y: x+y, self.inputs.values()) 
 
 class Subtract(Block):
     def __init__(self, name, pos, neg, output) -> None:
@@ -119,7 +125,7 @@ class Min(Block):
     
     @entry
     def computeOutput(self):
-        self.outputs[self.outputs_list[0]] = np.minimum(self.inputs[self.inputs_list[0]], self.inputs[self.inputs_list[1]])
+        self.outputs[self.outputs_list[0]] = reduce(np.minimum,self.inputs.values()) 
 
 class Max(Block):
     def __init__(self, name, signal1, signal2, output) -> None:
@@ -129,7 +135,7 @@ class Max(Block):
     
     @entry
     def computeOutput(self):
-        self.outputs[self.outputs_list[0]] = np.maximum(self.inputs[self.inputs_list[0]], self.inputs[self.inputs_list[1]])
+        self.outputs[self.outputs_list[0]] = reduce(np.maximum,self.inputs.values()) 
     
 
 class Multiply(Block):
@@ -139,20 +145,29 @@ class Multiply(Block):
         self.label = 'Multiply'
 
         self.inputPorts = {factor1:'x',factor2:'x'}
+    
     @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] * self.inputs[self.inputs_list[1]]
 
 class Divide(Block):
-    def __init__(self, name, numerator, denominator, output) -> None:
+    def __init__(self, name, numerator, denominator, output, eps=0) -> None:
         super().__init__(name, [numerator,denominator], [output])
         
         self.label = 'Divide'
 
         self.inputPorts = {numerator:'x', denominator:'/'}
+
+        self.eps = eps
+    
     @entry
     def computeOutput(self):
-        self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] / (self.inputs[self.inputs_list[1]]+0.01)
+        denominator = self.inputs[self.inputs_list[1]]
+        try:
+            denominator[denominator == 0] = self.eps
+        except:
+            denominator = denominator or self.eps
+        self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] / denominator
 
 class And(Block):
     def __init__(self, name, signal1, signal2, output) -> None:
@@ -188,8 +203,10 @@ class Switch(Block):
         self.label = 'Switch'
 
         self.inputPorts = {switched:'Switched', default:'Default', condition:'Condition'}
+
     @entry
     def computeOutput(self):
+        
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[1]]*(1-self.inputs[self.inputs_list[2]]) + self.inputs[self.inputs_list[0]]*self.inputs[self.inputs_list[2]]
 
 class Abs(Block):
@@ -197,6 +214,7 @@ class Abs(Block):
         super().__init__(name, [signal], [output])
 
         self.label = '|u|'
+
     @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = np.abs(self.inputs[self.inputs_list[0]])
@@ -208,6 +226,7 @@ class GreaterThanOrEqual(Block):
         self.label = '>='
 
         self.inputPorts = {first:'First', second:'Second'}
+
     @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] >= self.inputs[self.inputs_list[1]]
@@ -219,6 +238,7 @@ class GreaterThan(Block):
         self.label = '>'
         
         self.inputPorts = {first:'First', second:'Second'}
+
     @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] > self.inputs[self.inputs_list[1]]
@@ -262,6 +282,7 @@ class SampleDelay(Block):
         self.inputPorts = {signal:'In',delay:'td'}
         
         self.memory = []
+
     @entry
     def computeOutput(self):
         if len(self.memory) == self.inputs[self.inputs_list[1]]:
@@ -303,15 +324,17 @@ class Input(Block):
     def __init__(self, name, outputs) -> None:
         super().__init__(name,outputs,outputs)
         self.label = 'Input'
+    
     @entry
     def computeOutput(self):
-        self.outputs = self.inputs
+        self.outputs = {key:self.inputs[key] for key in self.outputs.keys()}
 
 class Output(Block):
     def __init__(self, name, inputs) -> None:
         super().__init__(name,inputs,inputs)
         
-        self.label = 'Output'
+        self.label = 'Output'  
+    
     @entry
     def computeOutput(self):
         self.outputs = self.inputs
@@ -354,6 +377,7 @@ class Map2D(Block):
         self.yPoint = y
 
         self.grid = RegularGridInterpolator(points=(x,y),values=z,bounds_error=False)
+
     @entry
     def computeOutput(self):        
         self.inputs = {signal:np.clip(value,min(coord),max(coord)) for coord, (signal, value) in zip([self.yPoint,self.xPoint], self.inputs.items())}
@@ -420,6 +444,7 @@ class Map1D(Block):
         self.xPoint = x
 
         self.grid = RegularGridInterpolator(points=(x,),values=y,bounds_error=False)
+        
     @entry
     def computeOutput(self):  
         #not super pretty      
@@ -458,6 +483,7 @@ class Clip(Block):
 
         self.label = 'clamp'
 
+    @entry
     def computeOutput(self):
         signal = self.inputs[self.inputs_list[0]]
         maxVal = self.inputs[self.inputs_list[1]]
@@ -471,5 +497,16 @@ class NotEqual(Block):
         
         self.label = '!='
 
+    @entry
     def computeOutput(self):
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] != self.inputs[self.inputs_list[1]]
+
+class Discard(Block):
+    def __init__(self, name, input):
+        super().__init__(name, [input], [])
+
+        self.label = 'Discard'
+
+    @entry
+    def computeOutput(self):
+        pass

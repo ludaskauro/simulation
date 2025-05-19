@@ -123,7 +123,7 @@ class Block(ABC):
     def reset(self)->None:
         """
         Resets the ready and visited attributes to False. Used after computing output in a SimulinkBlock instance.
-        Some BaseBlocks' method are overwritten.
+        Some BaseBlocks' methods are overwritten.
         """
         self.ready = {i:False for i in self.ready.keys()}
         self.visited = False

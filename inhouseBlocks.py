@@ -14,8 +14,8 @@ class AccumCtr(SimulinkBlock):
         
         self.addBlock(Min(name='min1',signal1='delayedCtr',signal2=Tol,output='min1'))
         
-        self.addBlock(Constant(name='Constant1',value=0))
-        self.addBlock(Max(name='max1',signal1=I,signal2='Constant1',output='max1'))
+        self.addBlock(Constant(name='Constant0_'+name,value=0))
+        self.addBlock(Max(name='max1',signal1=I,signal2='Constant0_'+name,output='max1'))
 
         self.addBlock(Subtract(name='sub1',pos='max1',neg='min1',output='sub1'))
 
@@ -23,13 +23,13 @@ class AccumCtr(SimulinkBlock):
 
         self.addBlock(Add(name='add1',pos1='delayedCtr',pos2='max2',output='add1'))        
 
-        self.addBlock(Constant(name='Constant3',value=0))
-        self.addBlock(Max(name='max2',signal1='min2',signal2='Constant3',output='max2'))
+        self.addBlock(Constant(name='Constant3_'+name,value=0))
+        self.addBlock(Max(name='max2',signal1='min2',signal2='Constant3_'+name,output='max2'))
 
         self.addBlock(Min(name='min3',signal1='add1',signal2='div1',output='min3'))
 
-        self.addBlock(Constant(name='Constant4',value=0))
-        self.addBlock(Switch(name='switchCtr',switched='Constant4',default='min3',condition=r,output='ctr1'))
+        self.addBlock(Constant(name='Constant4_'+name,value=0))
+        self.addBlock(Switch(name='switchCtr',switched='Constant4_'+name,default='min3',condition=r,output='ctr1'))
 
         self.addBlock(Delay(name='delayCtr',signalIn='ctr1',signalOut='delayedCtr'))
         
@@ -40,8 +40,8 @@ class AccumCtr(SimulinkBlock):
 
         self.addBlock(Add(name='add2',pos1='ts',pos2='delayVal',output='add2'))
 
-        self.addBlock(Constant(name='Constant5',value=0))
-        self.addBlock(Switch(name='switchVal',switched='Constant5',default='add2',condition=r,output='switchVal'))
+        self.addBlock(Constant(name='Constant5_'+name,value=0))
+        self.addBlock(Switch(name='switchVal',switched='Constant5_'+name,default='add2',condition=r,output='switchVal'))
         
         self.addBlock(Min(name='min4',signal1='switchVal',signal2=ValT,output='min4'))
         self.addBlock(Delay(name='delayVal',signalIn='min4',signalOut='delayVal'))
@@ -76,6 +76,23 @@ class RateLimiter(SimulinkBlock):
 
         self.compileBlock(printResult=False)
 
+class FirstOrderSmoothingFilterReset(SimulinkBlock):
+    def __init__(self, name, raster, signal, a, r, output):
+        super().__init__(name, raster, [signal, a, r], [output])
+
+        self.addBlock(Subtract(name='sub',pos='delayedVal',neg=signal,output='diff'))
+        
+        self.addBlock(Multiply(name='mul',factor1='diff',factor2=a,output='scaledDiff'))
+
+        self.addBlock(Add(name='add',pos1=signal,pos2='scaledDiff',output='smoothed'))
+
+        self.addBlock(Switch(name='switch',switched=signal,default='smoothed',condition=r,output=output))
+
+        self.addBlock(Delay(name='delay',signalIn=output,signalOut='delayedVal'))
+
+        self.compileBlock(printResult=False)
+
+
 class _TimeAverageSubsystem(SimulinkBlock):
     def __init__(self, name, raster, entry, r, I, Ts, Time, O, Cmplt):
         super().__init__(name, raster, [entry, r, I, Ts, Time], [O, Cmplt])
@@ -89,17 +106,17 @@ class _TimeAverageSubsystem(SimulinkBlock):
 
         self.addBlock(Or(name='or1',signal1='delayedCmplt',signal2=r,output='reset'))
 
-        self.addBlock(Constant(name='Constant1',value=1))
+        self.addBlock(Constant(name='Constant1_'+name,value=1))
 
         self.addBlock(Switch(name='switchI',switched=I,default='addI',condition='reset',output='switchI'))
-        self.addBlock(Switch(name='switchC',switched='Constant1',default='addC',condition='reset',output='switchC'))
+        self.addBlock(Switch(name='switchC',switched='Constant1_'+name,default='addC',condition='reset',output='switchC'))
 
         self.addBlock(Add(name='addI',pos1=I,pos2='delayedI',output='addI'))
-        self.addBlock(Add(name='addC',pos1='Constant1',pos2='delayedC',output='addC'))
+        self.addBlock(Add(name='addC',pos1='Constant1_'+name,pos2='delayedC',output='addC'))
 
-        self.addBlock(Constant(name='Constant2',value=1e30))
-        self.addBlock(Min(name='minI',signal1='switchI',signal2='Constant2',output='minI'))
-        self.addBlock(Min(name='minC',signal1='switchC',signal2='Constant2',output='minC'))
+        self.addBlock(Constant(name='Constant2_'+name,value=1e30))
+        self.addBlock(Min(name='minI',signal1='switchI',signal2='Constant2_'+name,output='minI'))
+        self.addBlock(Min(name='minC',signal1='switchC',signal2='Constant2_'+name,output='minC'))
 
         self.addBlock(Delay(name='delayedI',signalIn='minI',signalOut='delayedI'))
         self.addBlock(Delay(name='delayedC',signalIn='minC',signalOut='delayedC'))
@@ -120,8 +137,8 @@ class _TimeAverageRename(SimulinkBlock):
 
         self.addEntryCondition(EntryCondition(name='entry',entrySignal=entry))
 
-        self.addBlock(Constant(name='Constant1',value=1))
-        self.addBlock(Multiply(name='mul',factor1=O,factor2='Constant1',output=OH))
+        self.addBlock(Constant(name='Constant1_'+name,value=1))
+        self.addBlock(Multiply(name='mul',factor1=O,factor2='Constant1_'+name,output=OH))
 
         self.compileBlock(printResult=False)
 
@@ -157,16 +174,16 @@ class DiscreteDerivative(SimulinkBlock):
         self.addBlock(Subtract(name='sub1',pos=signal,neg='delayedSignal',output='sub1'))
 
         self.addBlock(SampleTime(name='ts'))
-        self.addBlock(Constant(name='Constant1',value=1e-6))
+        self.addBlock(Constant(name='Constant1_'+name,value=1e-6))
 
-        self.addBlock(Max(name='max1',signal1='ts',signal2='Constant1',output='max1'))
+        self.addBlock(Max(name='max1',signal1='ts',signal2='Constant1_'+name,output='max1'))
         self.addBlock(Divide(name='div1',numerator='sub1',denominator='max1',output='div1'))
 
         self.addBlock(Subtract(name='sub2',pos='div1',neg='delay2',output='sub2'))
 
         self.addBlock(Add(name='add1',pos1='ts',pos2=tc,output='add1'))
 
-        self.addBlock(Max(name='max2',signal1='add1',signal2='Constant1',output='max2'))
+        self.addBlock(Max(name='max2',signal1='add1',signal2='Constant1_'+name,output='max2'))
 
         self.addBlock(Divide(name='div2',numerator='ts',denominator='max2',output='div2'))
 
@@ -210,9 +227,9 @@ class Increment(SimulinkBlock):
 
         self.inputPorts = {rv:'rv', r:'r', inc:'inc', max:'max', e:'e'}
 
-        self.addBlock(Constant(name='Constant1',value=0))
+        self.addBlock(Constant(name='Constant1_'+name,value=0))
         
-        self.addBlock(Switch(name='switch1',default='Constant1',switched=inc,condition=e,output='increment'))
+        self.addBlock(Switch(name='switch1',default='Constant1_'+name,switched=inc,condition=e,output='increment'))
         self.addBlock(Add(name='add1',pos1='increment',pos2='delayedVal',output='add1'))
         
         self.addBlock(Switch(name='switch2',switched=rv,default='add1',condition=r,output='switch2'))
@@ -235,11 +252,11 @@ class NbrAverage(SimulinkBlock):
         self.inputPorts = {rv:'rv', r:'r', I:'I', e:'e'}
         self.outputPorts = {DerivAvg:'DerivAvg', Nbr:'Nbr'}
 
-        self.addBlock(Constant(name='Constant1',value=1))
-        self.addBlock(Constant(name='Constant0',value=0))
+        self.addBlock(Constant(name='Constant1_'+name,value=1))
+        self.addBlock(Constant(name='Constant0_'+name,value=0))
 
-        self.addBlock(Switch(name='switchI',default='Constant0',switched=I,condition=e,output='switchI'))
-        self.addBlock(Switch(name='switchEntry',switched='Constant1',default='Constant0',condition=e,output='switchEntry'))
+        self.addBlock(Switch(name='switchI',default='Constant0_'+name,switched=I,condition=e,output='switchI'))
+        self.addBlock(Switch(name='switchEntry',switched='Constant1_'+name,default='Constant0_'+name,condition=e,output='switchEntry'))
 
         self.addBlock(Add(name='addI',pos1='switchI',pos2='delayedI',output='addI'))
         self.addBlock(Add(name='addEntry',pos1='switchEntry',pos2='delayedEntry',output='addEntry'))
@@ -250,7 +267,7 @@ class NbrAverage(SimulinkBlock):
         self.addBlock(Delay(name='delayedI',signalIn='finalI',signalOut='delayedI'))
         self.addBlock(Delay(name='delayedEntry',signalIn=Nbr,signalOut='delayedEntry'))
 
-        self.addBlock(Max(name='maxEntry',signal1='Constant1',signal2=Nbr,output='denominator'))
+        self.addBlock(Max(name='maxEntry',signal1='Constant1_'+name,signal2=Nbr,output='denominator'))
 
         self.addBlock(Divide(name='mul',numerator='finalI',denominator='denominator',output=DerivAvg))
 

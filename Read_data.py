@@ -3,29 +3,30 @@ import os
 import pandas as pd
 from tqdm import tqdm
 
-def ReadINCAFile(directory:str,channel_list:list[str]):
-    '''
-    Reads selected signals from INCA-measurement files in the format MDF (.dat) into a pandas dataframe. 
-    The data from all files will be concatenated into one single dataframe.
+def ReadINCAFile(directory: str, channel_list: list[str],raster:float):
+    """
+    Reads selected signals from INCA-measurement files in the format MDF (.dat) into a pandas DataFrame.
+    Signals are aligned on the same time axis through merging.
+    
     Input:
         directory : str
-            Path to directory with the INCA files
+            Path to the directory with the INCA files
 
         channel_list : list[str]
-            list containing the selected signals
+            List containing the selected signals (channels) to extract.
     
     Output:
-        df : pandas.DataFrame
-            data concatenated into one pandas dataframe
-    '''
-
+        pd.DataFrame
+            Data concatenated into a pandas DataFrame.
+    """
+    channel_list = list(set(channel_list))
     df = None
     for file_name in tqdm(sorted(os.listdir(directory))):
         
         # Read MDF data file
         try:
             data = mdfreader.Mdf(os.path.join(directory, file_name),channel_list=channel_list)
-            data.resample()
+            data.resample(raster)
             data.convert_to_pandas()
             
             # Get group
@@ -37,6 +38,6 @@ def ReadINCAFile(directory:str,channel_list:list[str]):
             df = pd.concat([df, data], axis=0)
         except:
             continue
-    
+
     df = df.reset_index(drop=True)
-    return df[channel_list]
+    return df
