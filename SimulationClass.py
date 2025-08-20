@@ -105,8 +105,8 @@ class Simulation:
             out[signal] = out[signal].dropna()
 
             table = pa.Table.from_pandas(out[signal], preserve_index=False)
-            
-            writer[signal].write_table(table)
+          
+            w.write_table(table)
             out[signal] = None
             
             if w:
@@ -123,16 +123,19 @@ class Simulation:
         Returns:
             str: string in the required format. for instance, lst = [1,2,3] -> query = "'(1,2,3)'"
         """
-        query = "("
+        if len(lst) > 1:
+            query = "("
 
-        for i in lst:
-            i = str(i)
-            query += "'{}', ".format(i)
-            
-        query = query[:-2] if len(lst) > 1 else query[:-1]
-        query += ")"
+            for i in lst:
+                i = str(i)
+                query += "'{}', ".format(i)
+                
+            query = query[:-2]
+            query += ")"
 
-        return query
+            return query
+        else:
+            return str(lst[0])
 
     @lru_cache(10) #chache 10 latest queries to speed up repetitive queries
     def queryResults(self,**kwargs):
@@ -239,7 +242,9 @@ class Simulation:
                 dimensions=[
                     dict(label=param, values=tmp[param])
                     for param in parameter_names if tmp[param].n_unique() > 1
-                ]+[dict(label=signal, values=tmp[signal])]
+                ]+[dict(label=signal, values=tmp[signal])],
+                 unselected=dict(line=dict(
+                            opacity=0.0))
             )
         )
 

@@ -1,6 +1,6 @@
 import numpy as np
 
-def entry(func):
+def entry(computeOutput):
     """
     Decorator for a global entry condition inside a simulink block. If there is an entry condition then inputs, outputs and memory will be unchanged
     if entry != 1
@@ -8,14 +8,14 @@ def entry(func):
     def wrapper(self):
         if self.entryCondition:
             #Store previous state
-            prevOutput = self.outputs
-            prevInput = self.inputs
-            prevMemory = self.memory
+            prevOutput = {key:value for key,value in self.outputs.items()}
+            prevInput = {key:value for key,value in self.inputs.items()}
+            prevMemory = {key:value for key,value in self.memory.items()}
 
             #here comes one of the worst line of code i have ever written
             entrySignal = list(list(self.entryCondition.values())[0].inputs.values())[0] 
 
-            func(self) #compute output
+            computeOutput(self) #compute output 
 
             #determine whether to update state
             self.inputs = {key:value*entrySignal+prevInput[key]*(1-entrySignal) for key, value in self.inputs.items()}
@@ -24,7 +24,7 @@ def entry(func):
             
         else:
             #if there is no entry condition then just compute the output
-            func(self)
+            computeOutput(self)
         
         return None
     return wrapper
@@ -64,7 +64,7 @@ def vectorize(computeOutput):
             newShape[i] = -1
 
             param = param.reshape(newShape) #Each parameter can hold the shape of a vector with elements in only one dimension
-                                            #if there are 3 parameters and the third has 4 elements then that parameters new shape is (1,1,4)
+                                            #if there are 3 parameters and the third has 4 elements then that parameter's new shape is (1,1,4)
 
             self.simulinkBlock.calibrationParameters[name].value = param #replace old parameter with reshaped one
 

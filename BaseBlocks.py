@@ -164,7 +164,7 @@ class Divide(Block):
     def computeOutput(self):
         denominator = self.inputs[self.inputs_list[1]]
         try:
-            denominator[denominator == 0] = self.eps
+            denominator = np.where(denominator==0,self.eps,denominator)
         except:
             denominator = denominator or self.eps
         self.outputs[self.outputs_list[0]] = self.inputs[self.inputs_list[0]] / denominator
@@ -325,7 +325,7 @@ class Input(Block):
         super().__init__(name,outputs,outputs)
         self.label = 'Input'
     
-    @entry
+    #no entry! applying @entry will stop any data from passing through the simulink block
     def computeOutput(self):
         self.outputs = {key:self.inputs[key] for key in self.outputs.keys()}
 
@@ -337,7 +337,7 @@ class Output(Block):
     
     @entry
     def computeOutput(self):
-        self.outputs = self.inputs
+        self.outputs = {key:self.inputs[key] for key in self.outputs.keys()}
 
 class Map2D(Block):
     def __init__(self,name,x,y,output,DCMPath):

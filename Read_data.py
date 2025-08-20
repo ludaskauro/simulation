@@ -36,8 +36,11 @@ def ReadINCAFile(directory: str, channel_list: list[str],raster:float):
 
             # Add to dataframe
             df = pd.concat([df, data], axis=0)
-        except:
+            
+        except Exception as e:
+            print(f'Failed to load data from {file_name}')
+            print(e)
             continue
-
+    
     df = df.reset_index(drop=True)
     return df

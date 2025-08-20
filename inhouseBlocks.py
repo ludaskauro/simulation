@@ -36,7 +36,7 @@ class AccumCtr(SimulinkBlock):
         self.addBlock(Multiply(name='mul1',factor1='ctr1',factor2='ts',output=Ctr))
 
         self.addBlock(SampleTime(name='ts'))
-        self.addBlock(Divide(name='div1',numerator=MxL,denominator='ts', output='div1'))
+        self.addBlock(Divide(name='div1',numerator=MxL,denominator='ts', output='div1',eps=0.01))
 
         self.addBlock(Add(name='add2',pos1='ts',pos2='delayVal',output='add2'))
 
@@ -121,7 +121,7 @@ class _TimeAverageSubsystem(SimulinkBlock):
         self.addBlock(Delay(name='delayedI',signalIn='minI',signalOut='delayedI'))
         self.addBlock(Delay(name='delayedC',signalIn='minC',signalOut='delayedC'))
 
-        self.addBlock(Divide(name='div',numerator='minI',denominator='minC',output=O))
+        self.addBlock(Divide(name='div',numerator='minI',denominator='minC',output=O,eps=0.01))
 
         self.addBlock(Multiply(name='mul',factor1='minC',factor2=Ts,output='mul'))
 
@@ -177,7 +177,7 @@ class DiscreteDerivative(SimulinkBlock):
         self.addBlock(Constant(name='Constant1_'+name,value=1e-6))
 
         self.addBlock(Max(name='max1',signal1='ts',signal2='Constant1_'+name,output='max1'))
-        self.addBlock(Divide(name='div1',numerator='sub1',denominator='max1',output='div1'))
+        self.addBlock(Divide(name='div1',numerator='sub1',denominator='max1',output='div1',eps=0.01))
 
         self.addBlock(Subtract(name='sub2',pos='div1',neg='delay2',output='sub2'))
 
@@ -185,7 +185,7 @@ class DiscreteDerivative(SimulinkBlock):
 
         self.addBlock(Max(name='max2',signal1='add1',signal2='Constant1_'+name,output='max2'))
 
-        self.addBlock(Divide(name='div2',numerator='ts',denominator='max2',output='div2'))
+        self.addBlock(Divide(name='div2',numerator='ts',denominator='max2',output='div2',eps=0.01))
 
         self.addBlock(Multiply(name='mul1',factor1='sub2',factor2='div2',output='mul1'))
 
@@ -209,7 +209,7 @@ class DiscreteLowPassFilter(SimulinkBlock):
 
         self.addBlock(Max(name='max1',signal1='ts',signal2=tc,output='max1'))
 
-        self.addBlock(Divide(name='div1',numerator='ts',denominator='max1',output='div1'))
+        self.addBlock(Divide(name='div1',numerator='ts',denominator='max1',output='div1',eps=0.01))
 
         self.addBlock(Multiply(name='mul1',factor1='sub1',factor2='div1',output='mul1'))
 
@@ -262,13 +262,13 @@ class NbrAverage(SimulinkBlock):
         self.addBlock(Add(name='addEntry',pos1='switchEntry',pos2='delayedEntry',output='addEntry'))
 
         self.addBlock(Switch(name='SwitchResetI',switched=rv,default='addI',condition=r,output='finalI'))
-        self.addBlock(Switch(name='SwitchResetEntry',switched='Constant0',default='addEntry',condition=r,output=Nbr))
+        self.addBlock(Switch(name='SwitchResetEntry',switched='Constant0_'+name,default='addEntry',condition=r,output=Nbr))
 
         self.addBlock(Delay(name='delayedI',signalIn='finalI',signalOut='delayedI'))
         self.addBlock(Delay(name='delayedEntry',signalIn=Nbr,signalOut='delayedEntry'))
 
         self.addBlock(Max(name='maxEntry',signal1='Constant1_'+name,signal2=Nbr,output='denominator'))
 
-        self.addBlock(Divide(name='mul',numerator='finalI',denominator='denominator',output=DerivAvg))
+        self.addBlock(Divide(name='mul',numerator='finalI',denominator='denominator',output=DerivAvg,eps=0.01))
 
         self.compileBlock(printResult=False)
